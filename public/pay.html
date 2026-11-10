@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pay school fees</title>
+<style>
+:root{--bg:#f2f6f3;--surf:#fff;--ink:#14231b;--mute:#55655b;--line:#d3ded6;--brand:#166534;--ok:#15803d;--bad:#b4381a}
+@media (prefers-color-scheme:dark){:root{--bg:#10151f;--surf:#182030;--ink:#e8ecf4;--mute:#97a3ba;--line:#2b3750;--brand:#2f8f55;--ok:#6fd1a5;--bad:#ff9d85}}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;padding:16px}
+main{background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:24px;width:100%;max-width:420px}
+h1{margin:0 0 4px;font-size:24px}p{color:var(--mute);margin:0 0 16px}
+label{display:block;margin-bottom:14px;font-weight:600}
+input{display:block;width:100%;margin-top:4px;padding:12px;font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+button{width:100%;padding:13px;font:inherit;font-weight:700;color:#fff;background:var(--brand);border:0;border-radius:8px;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+#msg{margin:14px 0 0;min-height:1.5em}#msg.ok{color:var(--ok)}#msg.bad{color:var(--bad)}
+</style>
+</head>
+<body>
+<main>
+<h1>Pay school fees</h1>
+<p>Enter the details below. You will get an M-Pesa prompt on your phone to enter your PIN.</p>
+<form id="f" autocomplete="on">
+<label>Student admission number<input name="adm" required maxlength="12" placeholder="ADM001" autocapitalize="characters"></label>
+<label>M-Pesa phone number<input name="phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="0712345678"></label>
+<label>Amount (KES)<input name="amount" type="number" inputmode="numeric" min="1" step="1" required placeholder="5000"></label>
+<button id="go" type="submit">Pay with M-Pesa</button>
+</form>
+<p id="msg" role="status" aria-live="polite"></p>
+</main>
+<script src="pay.js"></script>
+</body>
+</html>
