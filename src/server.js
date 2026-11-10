@@ -441,8 +441,8 @@ app.use((error, req, res, next) => {
   console.error(error);
   res.status(500).json({ error: 'Server error.' });
 });
-
  if (!process.env.VERCEL) {
    app.listen(Number(process.env.PORT || 3000), () => console.log('BENPAL EDUCATION CENTRE server started.'));
  }
  export default app;
+ 
