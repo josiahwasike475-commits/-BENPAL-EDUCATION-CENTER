@@ -1,5 +1,7 @@
 
 import 'dotenv/config';
+ import path from 'path';
+import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import express from 'express';
 import helmet from 'helmet';
@@ -9,7 +11,8 @@ import connectPgSimple from 'connect-pg-simple';
 import cors from 'cors';
 import { csrfSync } from 'csrf-sync';
 import { Pool } from 'pg';
-import { z } from 'zod';
+import { z } from 'zod'; import path from 'path';
+import { fileURLToPath } from 'url';
 
 const required = ['DATABASE_URL', 'SESSION_SECRET', 'APP_ORIGIN'];
 for (const name of required) {
@@ -30,7 +33,9 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: production ? undefined : false }));
 app.use(cors({ origin: process.env.APP_ORIGIN, credentials: true, methods: ['GET', 'POST'] }));
 app.use(express.json({ limit: '10kb' }));
-app.use(express.static('public'));
+// app.use(express.static('public'));
+ const __dirname = path.dirname(fileURLToPath(import.meta.url));
+ app.use(express.static(path.join(__dirname, '../public')));
 app.use(rateLimit({ windowMs: 60_000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false }));
 app.use(session({
   store: new PgStore({ pool, tableName: 'user_session', createTableIfMissing: true }),
