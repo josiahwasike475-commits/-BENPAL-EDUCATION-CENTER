@@ -1,4 +1,4 @@
-
+$(cat /home/daytona/workspace/benpal-server-repair.js)
 
 import 'dotenv/config';
 //  import path from 'path';
