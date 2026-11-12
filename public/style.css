@@ -163,3 +163,26 @@
     transition: none;
   }
 }
+
+
+/* Public-site phone layout: keep all navigation visible without sideways scrolling. */
+@media (max-width: 850px) {
+  #root > .ph .pn { flex-wrap: wrap; overflow: visible; gap: 4px; padding: 0; }
+  #root > .ph .pn > a, #root > .ph .pn .cta { min-height: 44px; padding: 9px 10px; white-space: normal; }
+  #root > .ph .th { min-height: 44px; gap: 8px; padding: 0 7px; }
+  #root > .ph .sw { width: 28px; height: 28px; }
+  #root > .pm, #root > .pm .row > * { min-width: 0; }
+  #root > .pm input, #root > .pm select { min-width: 0; max-width: 100%; font-size: 16px; }
+  #root > .pm form .b { min-height: 48px; }
+}
+@media (max-width: 500px) {
+  #root > .ph { gap: 12px; }
+  #root > .ph b { font-size: 1.45rem; }
+  #root > .pm .hero { padding-top: 32px; padding-bottom: 32px; }
+  #root > .pm .hero h1 { font-size: clamp(2.2rem, 10vw, 2.6rem); }
+  #root > .pm .hero a { width: 100%; justify-content: center; margin: 0 0 10px; }
+  body > .benpal-marquee { font-size: 13px; letter-spacing: 1px; padding: 9px 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body > .benpal-marquee span { animation: none; padding-left: 0; }
+}
