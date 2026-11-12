@@ -23,7 +23,7 @@ async function csrfToken() { return (await api("/api/csrf")).csrfToken; }
 function message(text, error = false) { const box = $("#fm"); if (!box) return; box.className = `msg${error ? " e" : ""}`; box.textContent = text; }
 function pageShell(content, current = "home") {
   const pages = [["home", "Home"], ["about", "About us"], ["academics", "Academics"], ["admissions", "Admissions"], ["fees", "Fee payments"], ["reports", "Report forms"], ["contact", "Contact"]];
-  $("#root").innerHTML = `<header class="ph np"><b>BENPAL EDUCATION CENTRE</b><div class="pn">${pages.map(([id, name]) => `<a href="#${id}" class="${id === current ? "on" : ""}">${name}</a>`).join("")}${themeButtons()}<a class="cta" href="/login.html">Staff sign in</a></div></header><main class="pm">${content}</main><footer class="pf">© ${new Date().getFullYear()} BENPAL EDUCATION CENTRE · <a href="#contact">Contact</a></footer>`;
+  $("#root").innerHTML = `<header class="ph np"><b>BENPAL EDUCATION CENTRE</b><input class="menu-check" type="checkbox" id="mobile-menu" aria-label="Open navigation menu" aria-controls="mobile-panel"><label class="menu-label" for="mobile-menu" aria-hidden="true">Menu</label><label class="menu-backdrop" for="mobile-menu" aria-hidden="true"></label><div class="pn mobile-panel" id="mobile-panel"><label class="menu-close" for="mobile-menu">Close menu</label>${pages.map(([id, name]) => `<a href="#${id}" class="${id === current ? "on" : ""}">${name}</a>`).join("")}${themeButtons()}<a class="cta" href="/login.html">Staff sign in</a></div></header><main class="pm">${content}</main><footer class="pf">© ${new Date().getFullYear()} BENPAL EDUCATION CENTRE · <a href="#contact">Contact</a></footer>`;
 }
 function publicPage(name) {
   const pages = {
