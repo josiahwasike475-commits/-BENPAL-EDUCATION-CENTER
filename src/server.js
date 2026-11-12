@@ -110,9 +110,28 @@ const timestampNairobi = () => {
 };
 const getMpesaToken = async () => {
   const basic = Buffer.from(`${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`).toString('base64');
-  const response = await fetch(`${mpesaBaseUrl}/oauth/v1/generate?grant_type=client_credentials`, { headers: { Authorization: `Basic ${basic}` } });
+  let response;
+  try {
+    response = await fetch(`${mpesaBaseUrl}/oauth/v1/generate?grant_type=client_credentials`, { headers: { Authorization: `Basic ${basic}` } });
+  } catch {
+    console.error('M-Pesa OAuth request failed: network error.');
+    const error = new Error('M-Pesa service is unavailable. Contact the school administrator.');
+    error.code = 'MPESA_AUTH_UNAVAILABLE';
+    throw error;
+  }
+  if (!response.ok) {
+    console.error('M-Pesa OAuth request failed with HTTP status', response.status);
+    const error = new Error('M-Pesa authorisation failed. Contact the school administrator.');
+    error.code = 'MPESA_AUTH_UNAVAILABLE';
+    throw error;
+  }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.access_token) throw new Error('M-Pesa authorisation failed. Check the Daraja setup.');
+  if (!data.access_token) {
+    console.error('M-Pesa OAuth response did not include an access token.');
+    const error = new Error('M-Pesa authorisation failed. Contact the school administrator.');
+    error.code = 'MPESA_AUTH_UNAVAILABLE';
+    throw error;
+  }
   return data.access_token;
 };
 const sendStkPush = async ({ phoneNumber, amountKes, studentNumber }) => {
@@ -450,6 +469,7 @@ app.post('/api/admin/applications/:id/approve', csrfProtection, roles('school_ad
 
 app.use((error, req, res, next) => {
   if (error.code === 'EBADCSRFTOKEN') return res.status(403).json({ error: 'Your form expired. Refresh and try again.' });
+  if (error.code === 'MPESA_AUTH_UNAVAILABLE') return res.status(503).json({ error: error.message });
   if (error instanceof z.ZodError) return res.status(400).json({ error: 'Check the information you entered.' });
   console.error(error);
   res.status(500).json({ error: 'Server error.' });
