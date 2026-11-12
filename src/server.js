@@ -1,4 +1,4 @@
- 
+studentNumber: z.string().trim().regex(/^(?:BEN-[A-Z0-9]{10}|BEC-[A-Z0-9]{10})$/), 
 import 'dotenv/config';
 //  import path from 'path';
 // import { fileURLToPath } from 'url';
