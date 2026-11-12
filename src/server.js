@@ -1,4 +1,3 @@
-studentNumber: z.string().trim().regex(/^(?:BEN-[A-Z0-9]{10}|BEC-[A-Z0-9]{10})$/), 
 import 'dotenv/config';
 //  import path from 'path';
 // import { fileURLToPath } from 'url';
@@ -88,7 +87,7 @@ const feePaymentInput = z.object({
   paymentReference: z.string().trim().min(3).max(100)
 });
 const mpesaStkInput = z.object({
-  studentNumber: z.string().trim().regex(/^BEC-[A-Z0-9]{10}$/),
+  studentNumber: z.string().trim().regex(/^(?:BEN-[A-Z0-9]{10}|BEC-[A-Z0-9]{10})$/),
   phoneNumber: z.string().trim().regex(/^(?:254|0)(?:7|1)\d{8}$/),
   amountKes: z.coerce.number().int().positive().max(150_000)
 });
