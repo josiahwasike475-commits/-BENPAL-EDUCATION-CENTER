@@ -36,8 +36,10 @@ textarea{font:inherit;color:inherit;background:var(--surf);border:1px solid var(
   .tw{margin-inline:-12px;padding-inline:12px}
 }
 </style>
+<link rel="stylesheet" href="/mobile-menu.css">
+<script src="/mobile-menu.js" defer></script>
 </head><body><div class="benpal-marquee"><span><b>BENPAL</b> INTEGRATED EDUCATION CENTER • <b>BENPAL</b> INTEGRATED EDUCATION CENTER • <b>BENPAL</b> INTEGRATED EDUCATION CENTER •</span></div>
-<div class="app"><nav aria-label="Main"><h1>BENPAL EDUCATION CENTRE</h1><small>Admin console</small><a class="home-link" href="/">Home</a><div id="menu"></div><button id="theme" title="Change theme" aria-label="Change theme" style="margin:16px 8px 0;width:auto;background:var(--chalk);color:#1b2438">Theme</button></nav><main id="view" tabindex="-1"></main></div>
+<div class="app"><nav aria-label="Main"><h1>BENPAL EDUCATION CENTRE</h1><small>Admin console</small><input class="menu-check" type="checkbox" id="mobile-menu" aria-label="Open navigation menu" aria-controls="mobile-panel"><label class="menu-label" for="mobile-menu" aria-hidden="true">Menu</label><label class="menu-backdrop" for="mobile-menu" aria-hidden="true"></label><div class="mobile-panel" id="mobile-panel"><label class="menu-close" for="mobile-menu">Close menu</label><a class="home-link" href="/">Home</a><div id="menu"></div><button id="theme" title="Change theme" aria-label="Change theme" style="margin:16px 8px 0;width:auto;background:var(--chalk);color:#1b2438">Theme</button></div></nav><main id="view" tabindex="-1"></main></div>
 <script src="/admin-part1.js" defer></script>
 <script src="/admin-part2.js" defer></script>
 <script src="/admin-part3.js" defer></script>
