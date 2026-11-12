@@ -37,8 +37,14 @@ CREATE TABLE IF NOT EXISTS app.fee_payments (
   verified_by UUID REFERENCES app.staff_users(id),
   verified_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CHECK ((is_verified = FALSE AND verified_by IS NULL AND verified_at IS NULL)
-      OR (is_verified = TRUE AND verified_by IS NOT NULL AND verified_at IS NOT NULL))
+  CHECK (
+    (is_verified = FALSE AND verified_by IS NULL AND verified_at IS NULL)
+    OR (
+      is_verified = TRUE
+      AND verified_at IS NOT NULL
+      AND (payment_method = 'mpesa' OR verified_by IS NOT NULL)
+    )
+  )
 );
 
 CREATE INDEX IF NOT EXISTS students_status_idx ON app.students(status);
