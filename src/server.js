@@ -27,7 +27,7 @@ const mpesaBaseUrl = process.env.MPESA_ENVIRONMENT === 'production'
 
 const production = process.env.NODE_ENV === 'production';
 const app = express();
-const pool = new Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false }, options: '-c search_path=app,public' });
+const pool = new Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
 const PgStore = connectPgSimple(session);
 
 app.set('trust proxy', 1);
