@@ -28,7 +28,7 @@ const mpesaBaseUrl = process.env.MPESA_ENVIRONMENT === 'production'
 
 const production = process.env.NODE_ENV === 'production';
 const app = express();
-const pool = new Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false }, options: '-c search_path=app,public' });
+const pool = new Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
 const PgStore = connectPgSimple(session);
 
 app.set('trust proxy', 1);
@@ -40,7 +40,7 @@ app.use(express.json({ limit: '10kb' }));
  app.use(express.static(path.join(__dirname, '../public')));
 app.use(rateLimit({ windowMs: 60_000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false }));
 app.use(session({
-  store: new PgStore({ pool, tableName: 'user_session', createTableIfMissing: true }),
+  store: new PgStore({ pool, schemaName: 'app', tableName: 'user_session', createTableIfMissing: true }),
   name: 'benpal.sid',
   secret: process.env.SESSION_SECRET,
   resave: false,
@@ -101,7 +101,7 @@ const roles = (...allowed) => (req, res, next) => {
 const hashIp = (req) => crypto.createHash('sha256').update(`${req.ip}|${process.env.SESSION_SECRET}`).digest('hex');
 const audit = async (req, action, targetType, targetId = null) => {
   const staffId = req.session.user?.id || null;
-  await pool.query('INSERT INTO audit_log (staff_user_id, action, target_type, target_id, ip_hash) VALUES ($1,$2,$3,$4,$5)', [staffId, action, targetType, targetId, hashIp(req)]);
+  await pool.query('INSERT INTO app.audit_log (staff_user_id, action, target_type, target_id, ip_hash) VALUES ($1,$2,$3,$4,$5)', [staffId, action, targetType, targetId, hashIp(req)]);
 };
 const toMpesaPhone = (phone) => phone.startsWith('0') ? `254${phone.slice(1)}` : phone;
 const timestampNairobi = () => {
@@ -158,12 +158,19 @@ app.get('/api/auth/me', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Sign in required.' });
   res.json({ user: req.session.user });
 });
-app.get('/api/health', async (req, res) => { await pool.query('SELECT 1'); res.json({ ok: true }); });
+app.get('/api/health', async (req, res, next) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.post('/api/admissions', csrfProtection, async (req, res, next) => {
   try {
     const input = admissionInput.parse(req.body);
-    const result = await pool.query('INSERT INTO admissions_applications (child_name, date_of_birth, applying_for, guardian_name, guardian_phone) VALUES ($1,$2,$3,$4,$5) RETURNING id', [input.childName, input.dateOfBirth, input.applyingFor, input.guardianName, input.guardianPhone]);
+    const result = await pool.query('INSERT INTO app.admissions_applications (child_name, date_of_birth, applying_for, guardian_name, guardian_phone) VALUES ($1,$2,$3,$4,$5) RETURNING id', [input.childName, input.dateOfBirth, input.applyingFor, input.guardianName, input.guardianPhone]);
     res.status(201).json({ reference: result.rows[0].id });
   } catch (error) { next(error); }
 });
@@ -173,22 +180,22 @@ app.post('/api/public/mpesa/stk-push', mpesaStkLimiter, csrfProtection, async (r
   try {
     const input = mpesaStkInput.parse(req.body);
     const phoneNumber = toMpesaPhone(input.phoneNumber);
-    const student = await pool.query(`SELECT id FROM students
+    const student = await pool.query(`SELECT id FROM app.students
       WHERE student_number = $1 AND guardian_phone IN ($2, $3) AND status = 'active'`,
       [input.studentNumber.toUpperCase(), input.phoneNumber, `0${phoneNumber.slice(3)}`]);
     if (!student.rowCount) return res.status(404).json({ error: 'We could not match that learner number and guardian phone.' });
-    const created = await pool.query(`INSERT INTO mpesa_checkout_requests
+    const created = await pool.query(`INSERT INTO app.mpesa_checkout_requests
       (student_id, phone_number, amount_kes, status) VALUES ($1, $2, $3, 'initiated') RETURNING id`,
       [student.rows[0].id, phoneNumber, input.amountKes]);
     try {
       const response = await sendStkPush({ phoneNumber, amountKes: input.amountKes, studentNumber: input.studentNumber.toUpperCase() });
-      await pool.query(`UPDATE mpesa_checkout_requests SET status = 'pending', merchant_request_id = $1,
+      await pool.query(`UPDATE app.mpesa_checkout_requests SET status = 'pending', merchant_request_id = $1,
         checkout_request_id = $2, response_code = $3, response_description = $4, updated_at = now() WHERE id = $5`,
         [response.MerchantRequestID, response.CheckoutRequestID, response.ResponseCode, response.ResponseDescription || null, created.rows[0].id]);
       await audit(req, 'mpesa_stk_push_requested', 'mpesa_checkout_request', created.rows[0].id);
       res.status(202).json({ message: 'Check the phone for the M-Pesa prompt. Enter the PIN only on the phone.', requestId: created.rows[0].id });
     } catch (error) {
-      await pool.query("UPDATE mpesa_checkout_requests SET status = 'failed', response_description = $1, updated_at = now() WHERE id = $2", [error.message.slice(0, 500), created.rows[0].id]);
+      await pool.query("UPDATE app.mpesa_checkout_requests SET status = 'failed', response_description = $1, updated_at = now() WHERE id = $2", [error.message.slice(0, 500), created.rows[0].id]);
       throw error;
     }
   } catch (error) { next(error); }
@@ -198,7 +205,7 @@ app.get('/api/public/mpesa/status/:id', mpesaStatusLimiter, async (req, res, nex
   try {
     const id = z.string().uuid().parse(req.params.id);
     const result = await pool.query(`SELECT status, result_description, created_at
-      FROM mpesa_checkout_requests WHERE id = $1`, [id]);
+      FROM app.mpesa_checkout_requests WHERE id = $1`, [id]);
     if (!result.rowCount) return res.status(404).json({ error: 'Payment request not found.' });
     res.json({ payment: result.rows[0] });
   } catch (error) { next(error); }
@@ -214,7 +221,7 @@ app.post('/api/public/mpesa/callback', async (req, res, next) => {
     if (!callback?.CheckoutRequestID || !Number.isInteger(Number(callback.ResultCode))) return res.status(400).json({ ResultCode: 1, ResultDesc: 'Invalid callback.' });
     client = await pool.connect();
     await client.query('BEGIN');
-    const request = await client.query('SELECT * FROM mpesa_checkout_requests WHERE checkout_request_id = $1 FOR UPDATE', [callback.CheckoutRequestID]);
+    const request = await client.query('SELECT * FROM app.mpesa_checkout_requests WHERE checkout_request_id = $1 FOR UPDATE', [callback.CheckoutRequestID]);
     if (!request.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ ResultCode: 1, ResultDesc: 'Checkout request not found.' }); }
     const checkout = request.rows[0];
     if (checkout.status === 'succeeded') { await client.query('ROLLBACK'); return res.json({ ResultCode: 0, ResultDesc: 'Accepted' }); }
@@ -225,16 +232,16 @@ app.post('/api/public/mpesa/callback', async (req, res, next) => {
     const resultCode = Number(callback.ResultCode);
     let status = resultCode === 0 ? 'review' : 'failed';
     if (resultCode === 0 && receipt && Number.isInteger(amount) && amount === checkout.amount_kes && phone === checkout.phone_number) {
-      const payment = await client.query(`INSERT INTO fee_payments
+      const payment = await client.query(`INSERT INTO app.fee_payments
         (student_id, amount_kes, paid_at, payment_method, payment_reference, is_verified, verified_at)
         VALUES ($1, $2, now(), 'mpesa', $3, true, now()) ON CONFLICT (payment_reference) DO NOTHING RETURNING id`,
         [checkout.student_id, amount, receipt]);
       status = payment.rowCount ? 'succeeded' : 'review';
     }
-    await client.query(`UPDATE mpesa_checkout_requests SET status = $1, result_code = $2, result_description = $3,
+    await client.query(`UPDATE app.mpesa_checkout_requests SET status = $1, result_code = $2, result_description = $3,
       mpesa_receipt_number = $4, transaction_at = now(), callback_payload = $5, updated_at = now() WHERE id = $6`,
       [status, resultCode, callback.ResultDesc || null, receipt || null, JSON.stringify(req.body), checkout.id]);
-    await client.query('INSERT INTO audit_log (action, target_type, target_id, ip_hash) VALUES ($1,$2,$3,$4)',
+    await client.query('INSERT INTO app.audit_log (action, target_type, target_id, ip_hash) VALUES ($1,$2,$3,$4)',
       [status === 'succeeded' ? 'mpesa_payment_verified' : 'mpesa_callback_needs_review', 'mpesa_checkout_request', checkout.id, hashIp(req)]);
     await client.query('COMMIT');
     res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
@@ -247,7 +254,7 @@ app.post('/api/public/mpesa/callback', async (req, res, next) => {
 app.post('/api/auth/login', loginLimiter, csrfProtection, async (req, res, next) => {
   try {
     const { email, password } = loginInput.parse(req.body);
-    const row = await pool.query('SELECT id, email, password_hash, role, full_name FROM staff_users WHERE email=$1 AND is_active=true', [email.toLowerCase()]);
+    const row = await pool.query('SELECT id, email, password_hash, role, full_name FROM app.staff_users WHERE email=$1 AND is_active=true', [email.toLowerCase()]);
     const user = row.rows[0];
     const argon2 = await import('argon2');
     if (!user || !(await argon2.verify(user.password_hash, password))) return res.status(401).json({ error: 'Email or password is not correct.' });
@@ -269,7 +276,7 @@ app.post('/api/auth/logout', csrfProtection, async (req, res, next) => {
 
 app.get('/api/admin/applications', roles('school_admin', 'admissions_officer'), async (req, res, next) => {
   try {
-    const result = await pool.query("SELECT id, child_name, date_of_birth, applying_for, guardian_name, guardian_phone, created_at FROM admissions_applications WHERE status='pending' ORDER BY created_at ASC");
+    const result = await pool.query("SELECT id, child_name, date_of_birth, applying_for, guardian_name, guardian_phone, created_at FROM app.admissions_applications WHERE status='pending' ORDER BY created_at ASC");
     res.json({ applications: result.rows });
   } catch (error) { next(error); }
 });
@@ -314,7 +321,7 @@ app.post('/api/admin/students', csrfProtection, roles('school_admin', 'admission
 app.get('/api/admin/report-students', roles('school_admin', 'teacher'), async (req, res, next) => {
   try {
     const result = await pool.query(`SELECT id, student_number, full_name
-      FROM students WHERE status = 'active' ORDER BY full_name ASC`);
+      FROM app.students WHERE status = 'active' ORDER BY full_name ASC`);
     res.json({ students: result.rows });
   } catch (error) { next(error); }
 });
@@ -322,7 +329,7 @@ app.get('/api/admin/report-students', roles('school_admin', 'teacher'), async (r
 app.get('/api/admin/staff', roles('school_admin'), async (req, res, next) => {
   try {
     const result = await pool.query(`SELECT id, full_name, email, role, is_active, created_at
-      FROM staff_users ORDER BY full_name ASC`);
+      FROM app.staff_users ORDER BY full_name ASC`);
     res.json({ staff: result.rows });
   } catch (error) { next(error); }
 });
@@ -332,7 +339,7 @@ app.post('/api/admin/staff', csrfProtection, roles('school_admin'), async (req, 
     const input = staffCreateInput.parse(req.body);
     const argon2 = await import('argon2');
     const passwordHash = await argon2.hash(input.password, { type: argon2.argon2id });
-    const result = await pool.query(`INSERT INTO staff_users (full_name, email, password_hash, role)
+    const result = await pool.query(`INSERT INTO app.staff_users (full_name, email, password_hash, role)
       VALUES ($1,$2,$3,$4) RETURNING id, full_name, email, role, is_active, created_at`,
       [input.fullName, input.email, passwordHash, input.role]);
     await audit(req, 'staff_created', 'staff_user', result.rows[0].id);
@@ -346,10 +353,10 @@ app.post('/api/admin/staff', csrfProtection, roles('school_admin'), async (req, 
 app.post('/api/admin/fee-payments', csrfProtection, roles('school_admin', 'finance_officer'), async (req, res, next) => {
   try {
     const input = feePaymentInput.parse(req.body);
-    const payment = await pool.query(`INSERT INTO fee_payments
+    const payment = await pool.query(`INSERT INTO app.fee_payments
       (student_id, amount_kes, paid_at, payment_method, payment_reference, is_verified, verified_by, verified_at)
       SELECT id, $2, $3, $4, $5, true, $6, now()
-      FROM students WHERE id = $1 AND status = 'active'
+      FROM app.students WHERE id = $1 AND status = 'active'
       RETURNING id, student_id, amount_kes, paid_at, payment_method, payment_reference`,
       [input.studentId, input.amountKes, input.paidAt, input.paymentMethod, input.paymentReference, req.session.user.id]);
     if (!payment.rowCount) return res.status(404).json({ error: 'Active student not found.' });
@@ -366,9 +373,9 @@ app.get('/api/admin/parent-reports', roles('school_admin', 'teacher'), async (re
     const result = await pool.query(`SELECT r.id, r.academic_term, r.report_date, r.teacher_comment,
       r.strengths, r.support_needed, r.created_at, s.id AS student_id, s.student_number, s.full_name,
       u.full_name AS author_name
-      FROM student_parent_reports r
-      JOIN students s ON s.id = r.student_id
-      JOIN staff_users u ON u.id = r.created_by
+      FROM app.student_parent_reports r
+      JOIN app.students s ON s.id = r.student_id
+      JOIN app.staff_users u ON u.id = r.created_by
       ORDER BY r.report_date DESC, r.created_at DESC`);
     res.json({ reports: result.rows });
   } catch (error) { next(error); }
@@ -377,10 +384,10 @@ app.get('/api/admin/parent-reports', roles('school_admin', 'teacher'), async (re
 app.post('/api/admin/parent-reports', csrfProtection, roles('school_admin', 'teacher'), async (req, res, next) => {
   try {
     const input = parentReportInput.parse(req.body);
-    const result = await pool.query(`INSERT INTO student_parent_reports
+    const result = await pool.query(`INSERT INTO app.student_parent_reports
       (student_id, academic_term, report_date, teacher_comment, strengths, support_needed, created_by)
       SELECT id, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), $7
-      FROM students WHERE id = $1 AND status = 'active'
+      FROM app.students WHERE id = $1 AND status = 'active'
       ON CONFLICT (student_id, academic_term) DO UPDATE SET
         report_date = EXCLUDED.report_date,
         teacher_comment = EXCLUDED.teacher_comment,
@@ -401,8 +408,8 @@ app.get('/api/admin/attendance', roles('school_admin', 'admissions_officer', 'te
     const attendanceDate = z.string().date().parse(req.query.date || new Date().toISOString().slice(0, 10));
     const result = await pool.query(`SELECT s.id AS student_id, s.student_number, s.full_name,
       a.status, a.recorded_at
-      FROM students s
-      LEFT JOIN student_attendance a ON a.student_id = s.id AND a.attendance_date = $1
+      FROM app.students s
+      LEFT JOIN app.student_attendance a ON a.student_id = s.id AND a.attendance_date = $1
       WHERE s.status = 'active'
       ORDER BY s.full_name ASC`, [attendanceDate]);
     res.json({ attendanceDate, attendance: result.rows });
@@ -412,8 +419,8 @@ app.get('/api/admin/attendance', roles('school_admin', 'admissions_officer', 'te
 app.post('/api/admin/attendance', csrfProtection, roles('school_admin', 'admissions_officer', 'teacher'), async (req, res, next) => {
   try {
     const input = attendanceInput.parse(req.body);
-    const result = await pool.query(`INSERT INTO student_attendance (student_id, attendance_date, status, recorded_by)
-      SELECT id, $2, $3, $4 FROM students WHERE id = $1 AND status = 'active'
+    const result = await pool.query(`INSERT INTO app.student_attendance (student_id, attendance_date, status, recorded_by)
+      SELECT id, $2, $3, $4 FROM app.students WHERE id = $1 AND status = 'active'
       ON CONFLICT (student_id, attendance_date) DO UPDATE
       SET status = EXCLUDED.status, recorded_by = EXCLUDED.recorded_by, updated_at = now()
       RETURNING id`, [input.studentId, input.attendanceDate, input.status, req.session.user.id]);
@@ -429,10 +436,10 @@ app.post('/api/admin/applications/:id/approve', csrfProtection, roles('school_ad
     const id = z.string().uuid().parse(req.params.id);
     client = await pool.connect();
     await client.query('BEGIN');
-    const result = await client.query("UPDATE admissions_applications SET status='approved', reviewed_by=$1, reviewed_at=now() WHERE id=$2 AND status='pending' RETURNING id, child_name, guardian_name, guardian_phone", [req.session.user.id, id]);
+    const result = await client.query("UPDATE app.admissions_applications SET status='approved', reviewed_by=$1, reviewed_at=now() WHERE id=$2 AND status='pending' RETURNING id, child_name, guardian_name, guardian_phone", [req.session.user.id, id]);
     if (!result.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Pending application not found.' }); }
     const application = result.rows[0];
-    await client.query('INSERT INTO students (admission_application_id, full_name, guardian_name, guardian_phone) VALUES ($1,$2,$3,$4) ON CONFLICT (admission_application_id) DO NOTHING', [application.id, application.child_name, application.guardian_name, application.guardian_phone]);
+    await client.query('INSERT INTO app.students (admission_application_id, full_name, guardian_name, guardian_phone) VALUES ($1,$2,$3,$4) ON CONFLICT (admission_application_id) DO NOTHING', [application.id, application.child_name, application.guardian_name, application.guardian_phone]);
     await client.query('COMMIT');
     await audit(req, 'admission_approved', 'admissions_application', id);
     res.sendStatus(204);
