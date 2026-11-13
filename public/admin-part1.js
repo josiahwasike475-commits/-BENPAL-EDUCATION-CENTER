@@ -5,5 +5,21 @@ const todayText=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numer
 const feeTag=s=>s.balance_kes<=0?'<span class="tag t-paid"> paid</span>':s.paid_kes>0?'<span class="tag t-partial">Partial</span>':'<span class="tag t-owing">Owing</span>';
 const attendanceTag=status=>status?`<span class="tag t-${esc(status)}">${esc(status)}</span>`:'<span class="note">Not marked</span>';
 async function getCsrf(){const r=await fetch('/api/csrf',{credentials:'same-origin'});if(!r.ok)throw new Error('Could not prepare your request. Refresh and try again.');return(await r.json()).csrfToken}
-async function load(){try{const[sr,ar,fr,rr,mr]=await Promise.all([fetch('/api/admin/students',{credentials:'same-origin'}),fetch('/api/admin/applications',{credentials:'same-origin'}),fetch('/api/admin/staff',{credentials:'same-origin'}),fetch('/api/admin/parent-reports',{credentials:'same-origin'}),fetch('/api/auth/me',{credentials:'same-origin'})]);if(sr.status===401||ar.status===401||fr.status===401||rr.status===401||mr.status===401){location.href='/login.html';return}const sd=await sr.json(),ad=await ar.json(),fd=await fr.json(),rd=await rr.json(),md=await mr.json();if(!sr.ok)throw new Error(sd.error||'Could not load students.');if(!ar.ok)throw new Error(ad.error||'Could not load admissions.');if(!fr.ok)throw new Error(fd.error||'Could not load staff.');if(!rr.ok)throw new Error(rd.error||'Could not load parent reports.');if(!mr.ok)throw new Error(md.error||'Could not load your access.');state.students=sd.students;state.applications=ad.applications;state.staff=fd.staff;state.reports=rd.reports;state.user=md.user;render()}catch(e){$('#view').innerHTML='<h2>Dashboard unavailable</h2><p class="note">'+esc(e.message||'Refresh and try again.')+'</p>'}}
+// Client navigation is only a convenience; server routes enforce permissions.
+const access={school_admin:['overview','students','attendance','fees','staff','reports','library','admissions'],admissions_officer:['overview','students','attendance','admissions'],finance_officer:['overview','students','fees'],teacher:['attendance','reports']};
+async function dashboardGet(url){const r=await fetch(url,{credentials:'same-origin'});if(r.status===401){location.href='/login.html';throw new Error('Session expired.')}let data;try{data=await r.json()}catch{throw new Error('Could not load dashboard data.')}if(!r.ok)throw new Error(data.error||'Could not load dashboard data.');return data}
+async function load(){try{
+  const me=await dashboardGet('/api/auth/me'),role=me.user?.role,allowed=access[role];
+  if(!allowed)throw new Error('Your account does not have dashboard access.');
+  const requests=[];
+  if(role!=='teacher')requests.push(dashboardGet('/api/admin/students').then(d=>{state.students=d.students}));
+  if(role==='school_admin'||role==='admissions_officer')requests.push(dashboardGet('/api/admin/applications').then(d=>{state.applications=d.applications}));
+  if(role==='school_admin')requests.push(dashboardGet('/api/admin/staff').then(d=>{state.staff=d.staff}));
+  if(role==='school_admin'||role==='teacher')requests.push(dashboardGet('/api/admin/parent-reports').then(d=>{state.reports=d.reports}));
+  if(role==='school_admin'||role==='teacher')requests.push(dashboardGet('/api/admin/report-students').then(d=>{state.reportStudents=d.students}));
+  await Promise.all(requests);state.user=me.user;
+  if(!allowed.includes(state.view))state.view=allowed[0];
+  if(state.view==='attendance')await loadAttendance();else render();
+}catch(e){$('#view').innerHTML='<h2>Dashboard unavailable</h2><p class="note">'+esc(e.message||'Refresh and try again.')+'</p>'}}
+
 async function loadAttendance(){try{const r=await fetch('/api/admin/attendance?date='+encodeURIComponent(state.attendanceDate),{credentials:'same-origin'});if(r.status===401){location.href='/login.html';return}const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not load attendance.');state.attendance=d.attendance;state.attendanceDate=d.attendanceDate;render()}catch(e){state.notice=e.message||'Could not load attendance.';render()}}
