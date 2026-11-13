@@ -369,21 +369,26 @@ app.post('/api/admin/staff', csrfProtection, roles('school_admin'), async (req, 
 });
 
 app.post('/api/admin/fee-payments', csrfProtection, roles('school_admin', 'finance_officer'), async (req, res, next) => {
+  let client;
   try {
     const input = feePaymentInput.parse(req.body);
-    const payment = await pool.query(`INSERT INTO app.fee_payments
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const payment = await client.query(`INSERT INTO app.fee_payments
       (student_id, amount_kes, paid_at, payment_method, payment_reference, is_verified, verified_by, verified_at)
       SELECT id, $2, $3, $4, $5, true, $6, now()
       FROM app.students WHERE id = $1 AND status = 'active'
       RETURNING id, student_id, amount_kes, paid_at, payment_method, payment_reference`,
       [input.studentId, input.amountKes, input.paidAt, input.paymentMethod, input.paymentReference, req.session.user.id]);
-    if (!payment.rowCount) return res.status(404).json({ error: 'Active student not found.' });
-    await audit(req, 'fee_payment_verified', 'fee_payment', payment.rows[0].id);
+    if (!payment.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Active student not found.' }); }
+    await client.query('INSERT INTO app.audit_log (staff_user_id,action,target_type,target_id,ip_hash) VALUES ($1,$2,$3,$4,$5)', [req.session.user.id, 'fee_payment_verified', 'fee_payment', payment.rows[0].id, hashIp(req)]);
+    await client.query('COMMIT');
     res.status(201).json({ payment: payment.rows[0] });
   } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
     if (error.code === '23505') return res.status(409).json({ error: 'That payment reference already exists. Check before saving again.' });
     next(error);
-  }
+  } finally { client?.release(); }
 });
 
 app.get('/api/admin/parent-reports', roles('school_admin', 'teacher'), async (req, res, next) => {
@@ -458,8 +463,8 @@ app.post('/api/admin/applications/:id/approve', csrfProtection, roles('school_ad
     if (!result.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Pending application not found.' }); }
     const application = result.rows[0];
     await client.query('INSERT INTO app.students (admission_application_id, full_name, guardian_name, guardian_phone) VALUES ($1,$2,$3,$4) ON CONFLICT (admission_application_id) DO NOTHING', [application.id, application.child_name, application.guardian_name, application.guardian_phone]);
+    await client.query('INSERT INTO app.audit_log (staff_user_id,action,target_type,target_id,ip_hash) VALUES ($1,$2,$3,$4,$5)', [req.session.user.id, 'admission_approved', 'admissions_application', id, hashIp(req)]);
     await client.query('COMMIT');
-    await audit(req, 'admission_approved', 'admissions_application', id);
     res.sendStatus(204);
   } catch (error) {
     if (client) await client.query('ROLLBACK').catch(() => {});
