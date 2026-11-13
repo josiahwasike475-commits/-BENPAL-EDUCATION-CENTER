@@ -301,6 +301,12 @@ app.get('/api/admin/applications', roles('school_admin', 'admissions_officer'), 
 
 app.get('/api/admin/students', roles('school_admin', 'admissions_officer', 'finance_officer'), async (req, res, next) => {
   try {
+    // Admissions never fetch fee data from the database, even transiently.
+    if (req.session.user.role === 'admissions_officer') {
+      const result = await pool.query(`SELECT id, student_number, class_name, full_name, guardian_name,
+        guardian_email, status FROM app.students ORDER BY full_name ASC`);
+      return res.json({ students: result.rows });
+    }
     const result = await pool.query(`SELECT s.id, s.student_number, s.class_name, s.full_name, s.guardian_name,
       s.guardian_email, s.status, s.opening_fee_paid_kes, s.opening_fee_balance_kes,
       COALESCE((SELECT SUM(c.amount_kes) FROM app.fee_charges c WHERE c.student_id = s.id), 0)::int AS charged_kes,
@@ -314,7 +320,7 @@ app.get('/api/admin/students', roles('school_admin', 'admissions_officer', 'fina
   } catch (error) { next(error); }
 });
 
-app.post('/api/admin/students', csrfProtection, roles('school_admin', 'admissions_officer'), async (req, res, next) => {
+app.post('/api/admin/students', csrfProtection, roles('school_admin'), async (req, res, next) => {
   let client;
   try {
     const input = studentCreateInput.parse(req.body);
